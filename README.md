@@ -16,3 +16,6 @@ pip install -r requirements.txt
 6. run the gryorkBOT 1st time -
 python gryorkBOT.py
 7. run testgryorkBOT.py to get the experience of the chatbot
+
+demo image 
+![alt text](image.png)
