@@ -3,7 +3,7 @@ GryBOT is a GRYORK AI chatbot that will answer every question related to GRYORK 
 
 it is not a complete project 
 
-to run on localhost - do this ...
+to run on terminal - do this ...
 
 1. git clone https://github.com/anikchand461/GryBOT.git
 2. create a .env file and setup GOOGLE_API_KEY = "your_api_key"
