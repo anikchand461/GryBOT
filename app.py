@@ -15,6 +15,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# Configure Gunicorn logger
+gunicorn_logger = logging.getLogger('gunicorn.error')
+app.logger.handlers = gunicorn_logger.handlers
+app.logger.setLevel(gunicorn_logger.level)
+
 # Load environment variables
 load_dotenv()
 
@@ -58,6 +63,10 @@ qa_chain = init_qa_chain()
 def index():
     return render_template('index.html')
 
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'}), 200
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
@@ -69,11 +78,18 @@ def chat():
         if not query:
             return jsonify({'error': 'No query provided'}), 400
         
+        # Add timeout to prevent long-running requests
         result = qa_chain.run(query)
-        return jsonify({'response': result})
+        
+        # Ensure result is a string
+        if result is None:
+            return jsonify({'response': 'I could not generate a response. Please try again.'})
+            
+        return jsonify({'response': str(result)})
     except Exception as e:
         app.logger.error(f"Error processing chat request: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        # Return a user-friendly error message
+        return jsonify({'error': 'An error occurred while processing your request. Please try again later.'}), 500
 
 if __name__ == '__main__':
     # Use environment variable for port with a default of 5000
