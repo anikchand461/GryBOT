@@ -5,5 +5,5 @@ langchain-google-genai
 faiss-cpu
 flask
 jinja2
-uvicorn
+gunicorn
 python-multipart
