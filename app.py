@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
 from langchain_community.document_loaders import TextLoader
@@ -7,6 +8,12 @@ from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 
 app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Load environment variables
 load_dotenv()
@@ -53,16 +60,24 @@ def index():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.get_json()
-    query = data.get('query')
-    if not query:
-        return jsonify({'error': 'No query provided'}), 400
-    
     try:
+        data = request.get_json()
+        if data is None:
+            return jsonify({'error': 'Invalid JSON in request'}), 400
+            
+        query = data.get('query')
+        if not query:
+            return jsonify({'error': 'No query provided'}), 400
+        
         result = qa_chain.run(query)
         return jsonify({'response': result})
     except Exception as e:
+        app.logger.error(f"Error processing chat request: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Use environment variable for port with a default of 5000
+    port = int(os.environ.get('PORT', 5000))
+    # Only enable debug mode in development
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

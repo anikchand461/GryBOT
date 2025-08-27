@@ -200,7 +200,21 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: query })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            return response.text().then(text => {
+                if (!text) {
+                    throw new Error('Empty response received from server');
+                }
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`JSON parsing error: ${e.message}. Raw response: ${text.substring(0, 100)}...`);
+                }
+            });
+        })
         .then(data => {
             if (data.error) {
                 addMessage('Error: ' + data.error, 'bot-message');
@@ -209,6 +223,7 @@
             }
         })
         .catch(error => {
+            console.error('Error details:', error);
             addMessage('Error: ' + error.message, 'bot-message');
         })
         .finally(() => {

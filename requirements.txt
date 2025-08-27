@@ -7,4 +7,3 @@ flask
 jinja2
 gunicorn
 python-multipart
-json
