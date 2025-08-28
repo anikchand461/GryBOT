@@ -1,95 +1,136 @@
 import os
-import logging
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
+
 from langchain_community.document_loaders import TextLoader
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains import RetrievalQA
-
-app = Flask(__name__)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-# Configure Gunicorn logger
-gunicorn_logger = logging.getLogger('gunicorn.error')
-app.logger.handlers = gunicorn_logger.handlers
-app.logger.setLevel(gunicorn_logger.level)
+from langchain.chat_models import init_chat_model
+from langchain.chains import ConversationalRetrievalChain
+from langchain.prompts import PromptTemplate
 
 # Load environment variables
 load_dotenv()
 
-# Initialize the QA chain once when the app starts
-def init_qa_chain():
-    # Check if FAISS index exists
-    faiss_index_path = "faiss_index"
-    if os.path.exists(faiss_index_path):
-        # Load existing FAISS index
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        db = FAISS.load_local(faiss_index_path, embeddings, allow_dangerous_deserialization=True)
-    else:
-        # Load multiple text documents
-        files = ["knowledge_base/gryork1.txt", "knowledge_base/gryork2.txt", "knowledge_base/extra.txt"]
-        docs = []
-        for file in files:
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'supersecretkey')  # Change this in production
+
+# Paths
+faiss_index_path = "./faiss_index"
+
+# 1. Load Gryork data (if not already in DB)
+if not os.path.exists(faiss_index_path):
+    # Load multiple text files
+    documents = []
+    for file in ["knowledge_base/gryork1.txt", "knowledge_base/gryork2.txt", "knowledge_base/extra.txt"]:
+        if os.path.exists(file):
             loader = TextLoader(file, encoding="utf-8")
-            docs.extend(loader.load())
+            documents.extend(loader.load())
 
-        # Embeddings
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    if not documents:
+        raise FileNotFoundError("No gryork text files found!")
 
-        # Create and store in FAISS
-        db = FAISS.from_documents(docs, embeddings)
-        # Save the index
-        db.save_local(faiss_index_path)
+    # Build embeddings
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-    retriever = db.as_retriever()
+    # Create FAISS DB
+    db = FAISS.from_documents(documents, embeddings)
 
-    # LLM
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    # Save FAISS index locally
+    db.save_local(faiss_index_path)
+else:
+    # Load existing FAISS DB
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    db = FAISS.load_local(faiss_index_path, embeddings, allow_dangerous_deserialization=True)
 
-    # QA Chain
-    qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
-    
-    return qa_chain
+# 2. Retriever
+retriever = db.as_retriever()
 
-qa_chain = init_qa_chain()
+# 3. Gemini Flash model
+llm = init_chat_model(
+    "gemini-2.5-flash",  # Note: Updated to gemini-1.5-flash as gemini-2.5-flash may not exist; adjust if needed
+    model_provider="google_genai",
+    temperature=0.8
+)
+
+system_prompt = """
+You are GryBOT, a friendly AI assistant built by Gryork Engineers. Gryork is a company focused on solving liquidity challenges in the infrastructure sector.
+
+## Core Purpose
+- Answer questions about Gryork, its solutions (e.g., CWC model, GRYLINK platform), and related terms only when the user explicitly mentions Gryork, Aditya Tiwari, or Gryork-specific terms.
+- For general questions (e.g., "What is CWC?") that do not mention Gryork or its specific terms, provide a concise, accurate, and general response without referencing Gryork or its context.
+- For questions outside Gryork’s scope, you may politely redirect to Aditya Tiwari or Gryork Engineers if relevant, but you can also handle simple general queries.
+- Avoid overusing Gryork references unless the user intends to discuss Gryork.
+
+## Style
+- Keep responses short, warm, and conversational. Use different colorful emojis when appropriate to match the context.
+- Be clear and simple when discussing technical topics, especially infrastructure or financing concepts.
+- Be empathetic when addressing personal or sensitive questions.
+
+## Details
+Here’s some context about Gryork (use only when Gryork or its terms are mentioned):
+- Aditya Tiwari is the founder of Gryork Engineers, a company focused on solving liquidity challenges in the infrastructure sector through innovative financing solutions.
+- Gryork Engineers develops the Credit on Working Capital (CWC) model, which provides subcontractors with short-term credit backed by a Letter of Guarantee (LoG) from infrastructure companies.
+
+## Context
+{context}
+
+Question: {question}
+"""
+
+prompt = PromptTemplate(
+    input_variables=["context", "question"],
+    template=system_prompt
+)
+
+qa_chain = ConversationalRetrievalChain.from_llm(
+    llm=llm,
+    retriever=retriever,
+    return_source_documents=False,
+    combine_docs_chain_kwargs={"prompt": prompt}
+)
+
+small_talk_responses = {
+    "hi": "Hello! How can I help you today?",
+    "hello": "Hi there!",
+    "hey": "Hey! What’s up?",
+    "good morning": "Good morning Hope your day is going well!",
+    "good afternoon": "Good afternoon",
+    "good evening": "Good evening",
+    "bye": "See you later!",
+    "goodbye": "Goodbye! Have a great day!",
+    "thanks": "You're welcome!",
+    "thank you": "Glad I could help!",
+    "who are you": "I’m the Gryork Bot, created to help you with Gryork and beyond!",
+    "what can you do": "I can answer questions, chat casually, and share information about Gryork’s services.",
+}
+
+def is_small_talk(query: str):
+    q = query.lower().strip()
+    return q in small_talk_responses
 
 @app.route('/')
 def index():
+    session['chat_history'] = []
     return render_template('index.html')
-
-@app.route('/health')
-def health():
-    return jsonify({'status': 'healthy'}), 200
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    try:
-        data = request.get_json()
-        if data is None:
-            return jsonify({'error': 'Invalid JSON in request'}), 400
-            
-        query = data.get('query')
-        if not query:
-            return jsonify({'error': 'No query provided'}), 400
-        
-        # Add timeout to prevent long-running requests
-        result = qa_chain.run(query)
-        
-        # Ensure result is a string
-        if result is None:
-            return jsonify({'response': 'I could not generate a response. Please try again.'})
-            
-        return jsonify({'response': str(result)})
-    except Exception as e:
-        app.logger.error(f"Error processing chat request: {str(e)}")
-        # Return a user-friendly error message
-        return jsonify({'error': 'An error occurred while processing your request. Please try again later.'}), 500
+    query = request.json.get('message').strip()
+    chat_history = session.get('chat_history', [])
+
+    if query.lower() in ["exit", "quit", "goodbye"]:
+        response = "Goodbye!"
+    elif is_small_talk(query):
+        response = small_talk_responses[query.lower()]
+    else:
+        # Use RAG
+        result = qa_chain.invoke({"question": query, "chat_history": chat_history})
+        response = result["answer"]
+        chat_history.append((query, response))
+        session['chat_history'] = chat_history
+
+    return jsonify({'response': response})
 
 if __name__ == '__main__':
     # Use environment variable for port with a default of 5000

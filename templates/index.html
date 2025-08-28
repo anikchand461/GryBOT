@@ -124,162 +124,149 @@
         </div>
     </div>
 
-<script>
-    // Check if it's the first visit and show suggestions
-    document.addEventListener('DOMContentLoaded', function () {
-        const chatMessages = document.getElementById('chat-messages');
-        const hasInteracted = localStorage.getItem('chatHasInteracted');
+    <script>
+        function sendMessage() {
+            const input = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const message = input.value.trim(); // Changed from query to message to match backend
+            if (!message) return;
 
-        if (!hasInteracted) {
-            showSuggestionQuestions(chatMessages);
+            // Remove suggestions on first message (manual or via button)
+            const suggestionsBox = document.getElementById('suggestion-box');
+            if (suggestionsBox) {
+                suggestionsBox.remove();
+                localStorage.setItem('chatHasInteracted', 'true');
+            }
+
+            // Disable input and button during request
+            input.disabled = true;
+            sendButton.disabled = true;
+
+            // Add user message
+            addMessage(message, 'user-message'); // Updated variable name
+            input.value = '';
+
+            // Send to backend
+            fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message }) // Changed from query to message to match original backend
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                return response.json(); // Simplified JSON parsing to match original
+            })
+            .then(data => {
+                addMessage(data.response, 'bot-message'); // Simplified response handling
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                addMessage('Sorry, something went wrong.', 'bot-message'); // Simplified error message to match original
+            })
+            .finally(() => {
+                // Re-enable input and button
+                input.disabled = false;
+                sendButton.disabled = false;
+                input.focus();
+            });
         }
-    });
 
-    function showSuggestionQuestions(container) {
-        const suggestions = [
-            "What problem is Gryork solving?",
-            "How does the CWC model work?",
-            "What is NBFC and how it works?",
-            "How do subcontractors get funds quickly?"
-        ];
+        function addMessage(text, className) {
+            const messages = document.getElementById('chat-messages');
+            const messageContainer = document.createElement('div');
+            
+            if (className === 'user-message') {
+                messageContainer.className = 'flex items-start space-x-3 justify-end message-enter';
+                messageContainer.innerHTML = `
+                    <div class="rounded-2xl rounded-tr-sm px-4 py-3 max-w-xs" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
+                        <p class="text-white text-sm leading-relaxed">${text}</p>
+                    </div>
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                        </svg>
+                    </div>
+                `;
+            } else {
+                messageContainer.className = 'flex items-start space-x-3 message-enter';
+                messageContainer.innerHTML = `
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <div class="rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs" style="background: rgba(34, 36, 56, 0.5);">
+                        <p class="text-slate-200 text-sm leading-relaxed">${text}</p>
+                    </div>
+                `;
+            }
+            
+            messages.appendChild(messageContainer);
+            messages.scrollTop = messages.scrollHeight;
+        }
 
-        const suggestionsDiv = document.createElement('div');
-        suggestionsDiv.className = 'p-4 border-t border-chat-border text-center space-y-2';
-        suggestionsDiv.id = 'suggestion-box';
-        suggestionsDiv.innerHTML = `
-            <p class="text-slate-300 text-sm mb-3">Ask me something:</p>
-            ${suggestions.map(q => `
-                <button 
-                    class="inline-block bg-chat-surface hover:bg-chat-border text-slate-200 text-xs px-4 py-2 rounded-full mb-2 mr-2 transition"
-                    onclick="useSuggestion(this)">
-                    ${q}
-                </button>
-            `).join('')}
-        `;
-        container.appendChild(suggestionsDiv);
-        container.scrollTop = container.scrollHeight;
-    }
+        // Allow Enter key to send message
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
 
-    function useSuggestion(button) {
-        const query = button.textContent.trim();
-        document.getElementById('user-input').value = query;
-        sendMessage(); // Send automatically
+        // Focus input on load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('user-input').focus();
+        });
 
-        // Remove suggestions after use
-        const suggestionsBox = document.getElementById('suggestion-box');
-        if (suggestionsBox) suggestionsBox.remove();
+        // Check if it's the first visit and show suggestions
+        document.addEventListener('DOMContentLoaded', function () {
+            const chatMessages = document.getElementById('chat-messages');
+            const hasInteracted = localStorage.getItem('chatHasInteracted');
 
-        // Mark as interacted
-        localStorage.setItem('chatHasInteracted', 'true');
-    }
+            if (!hasInteracted) {
+                showSuggestionQuestions(chatMessages);
+            }
+        });
 
-    function sendMessage() {
-        const input = document.getElementById('user-input');
-        const sendButton = document.getElementById('send-button');
-        const query = input.value.trim();
-        if (!query) return;
+        function showSuggestionQuestions(container) {
+            const suggestions = [
+                "What problem is Gryork solving?",
+                "How does the CWC model work?",
+                "What is NBFC and how it works?",
+                "How do subcontractors get funds quickly?"
+            ];
 
-        // Remove suggestions on first message (manual or via button)
-        const suggestionsBox = document.getElementById('suggestion-box');
-        if (suggestionsBox) {
-            suggestionsBox.remove();
+            const suggestionsDiv = document.createElement('div');
+            suggestionsDiv.className = 'p-4 border-t border-chat-border text-center space-y-2';
+            suggestionsDiv.id = 'suggestion-box';
+            suggestionsDiv.innerHTML = `
+                <p class="text-slate-300 text-sm mb-3">Ask me something:</p>
+                ${suggestions.map(q => `
+                    <button 
+                        class="inline-block bg-chat-surface hover:bg-chat-border text-slate-200 text-xs px-4 py-2 rounded-full mb-2 mr-2 transition"
+                        onclick="useSuggestion(this)">
+                        ${q}
+                    </button>
+                `).join('')}
+            `;
+            container.appendChild(suggestionsDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function useSuggestion(button) {
+            const message = button.textContent.trim(); // Changed from query to message
+            document.getElementById('user-input').value = message;
+            sendMessage(); // Send automatically
+
+            // Remove suggestions after use
+            const suggestionsBox = document.getElementById('suggestion-box');
+            if (suggestionsBox) suggestionsBox.remove();
+
+            // Mark as interacted
             localStorage.setItem('chatHasInteracted', 'true');
         }
-
-        // Disable input and button during request
-        input.disabled = true;
-        sendButton.disabled = true;
-
-        // Add user message
-        addMessage(query, 'user-message');
-        input.value = '';
-
-        // Send to backend
-        fetch('/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status}`);
-            }
-            return response.text().then(text => {
-                if (!text) {
-                    throw new Error('Empty response received from server');
-                }
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    throw new Error(`JSON parsing error: ${e.message}. Raw response: ${text.substring(0, 100)}...`);
-                }
-            });
-        })
-        .then(data => {
-            if (data.error) {
-                addMessage('Error: ' + data.error, 'bot-message');
-            } else {
-                addMessage(data.response, 'bot-message');
-            }
-        })
-        .catch(error => {
-            console.error('Error details:', error);
-            addMessage('Error: ' + error.message, 'bot-message');
-        })
-        .finally(() => {
-            // Re-enable input and button
-            input.disabled = false;
-            sendButton.disabled = false;
-            input.focus();
-        });
-    }
-
-    function addMessage(text, className) {
-        const messages = document.getElementById('chat-messages');
-        const messageContainer = document.createElement('div');
-        
-        if (className === 'user-message') {
-            messageContainer.className = 'flex items-start space-x-3 justify-end message-enter';
-            messageContainer.innerHTML = `
-                <div class="rounded-2xl rounded-tr-sm px-4 py-3 max-w-xs" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
-                    <p class="text-white text-sm leading-relaxed">${text}</p>
-                </div>
-                <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
-                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                    </svg>
-                </div>
-            `;
-        } else {
-            messageContainer.className = 'flex items-start space-x-3 message-enter';
-            messageContainer.innerHTML = `
-                <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style="background: linear-gradient(135deg, #509246 0%, #447A3E 100%);">
-                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                    </svg>
-                </div>
-                <div class="rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs" style="background: rgba(34, 36, 56, 0.5);">
-                    <p class="text-slate-200 text-sm leading-relaxed">${text}</p>
-                </div>
-            `;
-        }
-        
-        messages.appendChild(messageContainer);
-        messages.scrollTop = messages.scrollHeight;
-    }
-
-    // Allow Enter key to send message
-    document.getElementById('user-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
-    // Focus input on load
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('user-input').focus();
-    });
-</script>
+    </script>
 </body>
 </html>
