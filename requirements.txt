@@ -1,6 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+pydantic
 python-dotenv
 langchain
-langchain-community
 langchain-google-genai
+langchain-community
 faiss-cpu
-fastapi
