@@ -3,7 +3,4 @@ langchain
 langchain-community
 langchain-google-genai
 faiss-cpu
-flask
-jinja2
-gunicorn
-python-multipart
+fastapi
